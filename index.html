@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Pathfinder Engine | Interactive Navigation</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            orange: '#FF5200',
+                            navy: '#0F172A',
+                            accent: '#38BDF8',
+                            lawn: '#DCFCE7',
+                            road: '#334155'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom animations & map styles */
+        .path-animated {
+            stroke-dasharray: 12, 6;
+            animation: dash 1s linear infinite;
+        }
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -18;
+            }
+        }
+        .node-pulse {
+            animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.9; }
+            50% { transform: scale(1.3); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.9; }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #F1F5F9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 antialiased h-screen flex flex-col overflow-hidden">
+
+    <!-- Navigation / Header Bar -->
+    <header class="bg-brand-navy text-white px-4 py-3 shadow-md z-30 flex justify-between items-center shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-brand-orange text-white p-2.5 rounded-2xl shadow-lg shadow-orange-500/30 flex items-center justify-center">
+                <i class="fa-solid font-bold fa-route text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
+                    Campus Pathfinder <span class="bg-orange-500/20 text-brand-orange text-xs px-2 py-0.5 rounded-full font-semibold border border-brand-orange/30">PRO Engine</span>
+                </h1>
+                <p class="text-xs text-slate-400 hidden sm:block">Intelligent Real-time Campus Navigation & Graph Visualizer</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-3">
+            <button id="toggleAlgoVisualizer" class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center space-x-2">
+                <i class="fa-solid fa-microchip text-brand-accent"></i>
+                <span class="hidden sm:inline">Algorithm Visualizer Mode</span>
+                <span id="algoModeBadge" class="w-2 h-2 rounded-full bg-slate-500 inline-block"></span>
+            </button>
+            <div class="text-right text-xs text-slate-400 hidden md:block border-l border-slate-700 pl-3">
+                <div class="font-medium text-slate-200">Central University Campus</div>
+                <div class="text-[10px] text-emerald-400 flex items-center justify-end gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-ping"></span> Live Map Active
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+
+        <!-- Control Sidebar & Directions Drawer -->
+        <aside class="w-full md:w-96 bg-white border-r border-slate-200 z-20 flex flex-col h-1/2 md:h-full shadow-xl transition-all duration-300">
+            
+            <!-- Top Controls Box -->
+            <div class="p-4 bg-white border-b border-slate-100 shadow-sm shrink-0">
+                <!-- Search Select Boxes -->
+                <div class="space-y-3">
+                    <!-- From Select -->
+                    <div class="relative">
+                        <label class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-circle-dot text-emerald-500 text-xs"></i> Start Location (From)
+                        </label>
+                        <select id="selectFrom" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl p-2.5 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/50 focus:border-brand-orange transition font-medium">
+                        </select>
+                    </div>
+
+                    <!-- Swap Button & To Select -->
+                    <div class="relative">
+                        <div class="absolute -top-3 right-4 z-10">
+                            <button id="btnSwap" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-full p-1.5 shadow-md transition hover:scale-110 active:scale-95" title="Swap From and To">
+                                <i class="fa-solid fa-arrows-up-down text-xs"></i>
+                            </button>
+                        </div>
+                        <label class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-location-dot text-brand-orange text-xs"></i> Destination (To)
+                        </label>
+                        <select id="selectTo" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl p-2.5 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/50 focus:border-brand-orange transition font-medium">
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quick Destination Chips -->
+                <div class="mt-3">
+                    <span class="text-[10px] font-bold uppercase text-slate-400 tracking-wider block mb-1.5">Quick Select:</span>
+                    <div class="flex flex-wrap gap-1.5" id="quickPresetsContainer">
+                        <!-- Dynamically Generated -->
+                    </div>
+                </div>
+
+                <!-- Preferences / Algorithm Options Toggles -->
+                <div class="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-wheelchair text-blue-500"></i> Accessible Mode
+                        </span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="toggleWheelchair" class="sr-only peer">
+                            <div class="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-brand-orange"></i> Algorithm
+                        </span>
+                        <select id="selectAlgorithm" class="text-xs bg-slate-100 border border-slate-200 font-medium text-slate-700 rounded-lg py-1 px-2 focus:outline-none">
+                            <option value="dijkstra">Dijkstra (Shortest Distance)</option>
+                            <option value="bfs">BFS (Fewest Turns/Hops)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button id="btnFindRoute" class="mt-4 w-full bg-brand-orange hover:bg-orange-600 active:bg-orange-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-orange-500/25 transition transform active:scale-[0.98] flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-compass text-lg"></i>
+                    <span>Find Navigation Route</span>
+                </button>
+            </div>
+
+            <!-- Route Results & Turn-by-Turn Directions Container -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4" id="directionsDrawer">
+                
+                <!-- Default Placeholder state -->
+                <div id="emptyState" class="text-center py-10 px-4">
+                    <div class="w-16 h-16 bg-orange-50 text-brand-orange rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
+                        <i class="fa-solid fa-map-location-dot text-2xl"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-slate-700">Choose Your Path</h3>
+                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Select a starting point and destination to compute optimized route, distance, steps, and accessibility details.</p>
+                </div>
+
+                <!-- Active Route Summary (Hidden by default) -->
+                <div id="routeSummaryCard" class="hidden space-y-3">
+                    <div class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-4 shadow-xl border border-slate-700 relative overflow-hidden">
+                        <div class="absolute -right-4 -bottom-4 opacity-10 text-slate-100">
+                            <i class="fa-solid fa-person-walking text-8xl"></i>
+                        </div>
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="bg-orange-500/20 text-brand-orange border border-brand-orange/30 text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-md tracking-wider" id="badgeRouteType">Optimized Route</span>
+                                <h3 class="text-xl font-black mt-1 text-white flex items-center gap-1.5" id="summaryTime">
+                                    -- mins
+                                </h3>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-slate-400 text-[11px] block">Total Distance</span>
+                                <span class="text-lg font-bold text-brand-accent" id="summaryDistance">-- m</span>
+                            </div>
+                        </div>
+
+                        <!-- Mini metrics grid -->
+                        <div class="grid grid-cols-3 gap-2 pt-3 border-t border-slate-700/80 text-center">
+                            <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                                <i class="fa-solid fa-fire text-orange-400 text-xs block mb-0.5"></i>
+                                <span class="text-[10px] text-slate-400 block">Calories</span>
+                                <span class="text-xs font-bold text-slate-200" id="summaryCalories">-- kcal</span>
+                            </div>
+                            <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                                <i class="fa-solid fa-route text-sky-400 text-xs block mb-0.5"></i>
+                                <span class="text-[10px] text-slate-400 block">Nodes</span>
+                                <span class="text-xs font-bold text-slate-200" id="summaryNodesCount">--</span>
+                            </div>
+                            <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                                <i class="fa-solid fa-wheelchair text-emerald-400 text-xs block mb-0.5"></i>
+                                <span class="text-[10px] text-slate-400 block">Access</span>
+                                <span class="text-xs font-bold text-emerald-300" id="summaryAccess">100% Easy</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step by Step Turn Directions Header -->
+                    <div class="flex justify-between items-center px-1">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Navigation Directions</h4>
+                        <span class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full" id="stepCountBadge">0 Steps</span>
+                    </div>
+
+                    <!-- Turn List Container -->
+                    <div class="space-y-2.5 relative before:absolute before:top-3 before:bottom-3 before:left-[17px] before:w-0.5 before:bg-slate-200" id="turnDirectionsList">
+                        <!-- Directions dynamically injected here -->
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Interactive Map Workspace -->
+        <main class="flex-1 relative bg-emerald-50/40 overflow-hidden flex flex-col">
+            
+            <!-- Floating Map Control overlay toolbar -->
+            <div class="absolute top-4 right-4 z-10 flex flex-col gap-2">
+                <div class="bg-white/90 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-200/80 flex flex-col gap-1">
+                    <button id="btnZoomIn" class="w-9 h-9 bg-white hover:bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center shadow-sm font-bold transition" title="Zoom In">
+                        <i class="fa-solid fa-plus text-sm"></i>
+                    </button>
+                    <button id="btnZoomOut" class="w-9 h-9 bg-white hover:bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center shadow-sm font-bold transition" title="Zoom Out">
+                        <i class="fa-solid fa-minus text-sm"></i>
+                    </button>
+                    <button id="btnResetView" class="w-9 h-9 bg-white hover:bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center shadow-sm font-bold transition" title="Reset Map View">
+                        <i class="fa-solid fa-compress text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map Legend (Bottom Right overlay) -->
+            <div class="absolute bottom-4 right-4 z-10 bg-white/95 backdrop-blur-md px-3 py-2.5 rounded-2xl shadow-lg border border-slate-200/80 text-xs hidden sm:block">
+                <div class="font-bold text-slate-700 mb-1.5 text-[11px] uppercase tracking-wider">Campus Legend</div>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Academic / CS</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> Main Gate / Admin</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span> Food Court / Center</div>
+                    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block"></span> Hostels & Sports</div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1 bg-amber-400 rounded-full inline-block"></span> Stairs / Steps</div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-1 bg-brand-orange rounded-full inline-block"></span> Active Path</div>
+                </div>
+            </div>
+
+            <!-- Algorithm Metrics Live Dashboard Banner (visible in Algo Visualizer mode) -->
+            <div id="algoMetricsBanner" class="hidden absolute top-4 left-4 z-10 bg-slate-900/90 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700 max-w-xs transition-all">
+                <div class="flex items-center justify-between border-b border-slate-700 pb-2 mb-2">
+                    <span class="text-xs font-bold text-brand-accent flex items-center gap-1.5">
+                        <i class="fa-solid fa-vial-circle-check animate-bounce"></i> Realtime Algorithm Inspector
+                    </span>
+                    <span id="algoStatusBadge" class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">Exploring...</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block">Nodes Visited:</span>
+                        <span id="metricNodesVisited" class="text-sm font-bold text-white">0</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 block">Exec Time:</span>
+                        <span id="metricExecTime" class="text-sm font-bold text-emerald-400">0 ms</span>
+                    </div>
+                    <div class="col-span-2 pt-1 border-t border-slate-800 flex justify-between text-[11px]">
+                        <span class="text-slate-400">Algorithm:</span>
+                        <span id="metricAlgoName" class="font-bold text-brand-orange">Dijkstra</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SVG Campus Map Container -->
+            <div id="mapViewport" class="w-full h-full cursor-grab active:cursor-grabbing select-none flex items-center justify-center">
+                <svg id="campusMapSvg" class="w-full h-full min-h-[400px]" viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Dynamic Layer Content rendered by JS -->
+                </svg>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // Campus Graph Data Structure (Nodes representing buildings & pathway intersections)
+        const campusGraph = {
+            nodes: [
+                { id: "main_gate", name: "Main Gate", category: "gate", x: 120, y: 600, stairs: false, icon: "fa-door-open" },
+                { id: "admin", name: "Admin Building", category: "admin", x: 280, y: 530, stairs: false, icon: "fa-building-columns" },
+                { id: "library", name: "Central Library", category: "academic", x: 480, y: 550, stairs: false, icon: "fa-book-open" },
+                { id: "cs_dept", name: "Computer Science Dept", category: "academic", x: 260, y: 320, stairs: false, icon: "fa-laptop-code" },
+                { id: "eng_b", name: "Engineering Block B", category: "academic", x: 450, y: 360, stairs: true, icon: "fa-gears" },
+                { id: "student_center", name: "Student Center", category: "center", x: 620, y: 420, stairs: false, icon: "fa-users" },
+                { id: "food_court", name: "Canteen / Food Court", category: "center", x: 700, y: 560, stairs: false, icon: "fa-utensils" },
+                { id: "sports_complex", name: "Sports Complex", category: "sports", x: 820, y: 360, stairs: false, icon: "fa-basketball" },
+                { id: "boys_hostel", name: "Boys Hostel Block", category: "hostel", x: 740, y: 180, stairs: true, icon: "fa-hotel" },
+                { id: "girls_hostel", name: "Girls Hostel Block", category: "hostel", x: 480, y: 160, stairs: false, icon: "fa-house-chimney" },
+                { id: "science_lab", name: "Science & Research Lab", category: "academic", x: 220, y: 160, stairs: false, icon: "fa-flask" },
+                
+                // Waypoint pathway nodes
+                { id: "j_south", name: "South Junction", category: "waypoint", x: 300, y: 610, stairs: false },
+                { id: "j_center", name: "Central Quad Junction", category: "waypoint", x: 480, y: 440, stairs: false },
+                { id: "j_north", name: "North Quad Junction", category: "waypoint", x: 480, y: 260, stairs: false },
+                { id: "j_west", name: "West Pathway Junction", category: "waypoint", x: 180, y: 360, stairs: false },
+                { id: "j_east", name: "East Athletic Pathway", category: "waypoint", x: 820, y: 270, stairs: false },
+                { id: "stairs_ridge", name: "Terrace Ridge Steps", category: "waypoint", x: 620, y: 260, stairs: true }
+            ],
+            // Undirected Edges with dist (meters) and hasStairs flag
+            edges: [
+                { from: "main_gate", to: "j_south", weight: 150, stairs: false },
+                { from: "j_south", to: "admin", weight: 90, stairs: false },
+                { from: "admin", to: "library", weight: 200, stairs: false },
+                { from: "main_gate", to: "j_west", weight: 240, stairs: false },
+                { from: "j_west", to: "cs_dept", weight: 100, stairs: false },
+                { from: "cs_dept", to: "science_lab", weight: 180, stairs: false },
+                { from: "admin", to: "cs_dept", weight: 210, stairs: false },
+                { from: "cs_dept", to: "eng_b", weight: 190, stairs: false },
+                { from: "eng_b", to: "j_center", weight: 90, stairs: true }, // Contains stairs step
+                { from: "library", to: "j_center", weight: 120, stairs: false },
+                { from: "library", to: "food_court", weight: 220, stairs: false },
+                { from: "j_center", to: "student_center", weight: 140, stairs: false },
+                { from: "student_center", to: "food_court", weight: 160, stairs: false },
+                { from: "food_court", to: "sports_complex", weight: 230, stairs: false },
+                { from: "j_center", to: "j_north", weight: 180, stairs: false },
+                { from: "cs_dept", to: "j_north", weight: 230, stairs: false },
+                { from: "science_lab", to: "girls_hostel", weight: 260, stairs: false },
+                { from: "j_north", to: "girls_hostel", weight: 110, stairs: false },
+                { from: "j_north", to: "stairs_ridge", weight: 140, stairs: true }, // Contains stairs
+                { from: "stairs_ridge", to: "boys_hostel", weight: 150, stairs: true },
+                { from: "girls_hostel", to: "boys_hostel", weight: 260, stairs: false },
+                { from: "student_center", to: "j_east", weight: 220, stairs: false },
+                { from: "sports_complex", to: "j_east", weight: 100, stairs: false },
+                { from: "j_east", to: "boys_hostel", weight: 120, stairs: false }
+            ]
+        };
+
+        // Quick Preset Buttons mapping
+        const presetDestinations = [
+            { label: "Library", id: "library", icon: "fa-book" },
+            { label: "CS Dept", id: "cs_dept", icon: "fa-laptop" },
+            { label: "Food Court", id: "food_court", icon: "fa-utensils" },
+            { label: "Main Gate", id: "main_gate", icon: "fa-door-open" },
+            { label: "Boys Hostel", id: "boys_hostel", icon: "fa-building" }
+        ];
+
+        // State variables
+        let isAlgoVisualizerMode = false;
+        let isExploring = false;
+        let zoomLevel = 1;
+        let viewBox = { x: 0, y: 0, w: 1000, h: 700 };
+
+        // DOM Elements
+        const selectFrom = document.getElementById('selectFrom');
+        const selectTo = document.getElementById('selectTo');
+        const btnFindRoute = document.getElementById('btnFindRoute');
+        const btnSwap = document.getElementById('btnSwap');
+        const toggleWheelchair = document.getElementById('toggleWheelchair');
+        const selectAlgorithm = document.getElementById('selectAlgorithm');
+        const toggleAlgoVisualizer = document.getElementById('toggleAlgoVisualizer');
+        const algoModeBadge = document.getElementById('algoModeBadge');
+        const algoMetricsBanner = document.getElementById('algoMetricsBanner');
+        const svgMap = document.getElementById('campusMapSvg');
+        const quickPresetsContainer = document.getElementById('quickPresetsContainer');
+
+        // Initialize Application
+        function initApp() {
+            populateSelectOptions();
+            renderQuickPresets();
+            renderCampusMapSvg();
+            setupEventListeners();
+        }
+
+        function populateSelectOptions() {
+            const buildingNodes = campusGraph.nodes.filter(n => n.category !== 'waypoint');
+            
+            selectFrom.innerHTML = '';
+            selectTo.innerHTML = '';
+
+            buildingNodes.forEach((node, index) => {
+                const opt1 = new Option(node.name, node.id);
+                const opt2 = new Option(node.name, node.id);
+                selectFrom.add(opt1);
+                selectTo.add(opt2);
+            });
+
+            // Set sensible defaults
+            selectFrom.value = "main_gate";
+            selectTo.value = "cs_dept";
+        }
+
+        function renderQuickPresets() {
+            quickPresetsContainer.innerHTML = '';
+            presetDestinations.forEach(preset => {
+                const btn = document.createElement('button');
+                btn.className = "text-[11px] font-semibold bg-slate-100 hover:bg-orange-50 hover:text-brand-orange hover:border-brand-orange/40 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1 active:scale-95";
+                btn.innerHTML = `<i class="fa-solid ${preset.icon} text-[10px]"></i> ${preset.label}`;
+                btn.onclick = () => {
+                    selectTo.value = preset.id;
+                    calculateAndRenderRoute();
+                };
+                quickPresetsContainer.appendChild(btn);
+            });
+        }
+
+        // Render 2D SVG Visualizer Map
+        function renderCampusMapSvg() {
+            svgMap.innerHTML = '';
+
+            // Group layers
+            const gBackground = document.createElementNS("http://www.w3.org/2000/svg", "g"); // Lawns & features
+            const gEdges = document.createElementNS("http://www.w3.org/2000/svg", "g"); // Pathways
+            const gVisitedEdges = document.createElementNS("http://www.w3.org/2000/svg", "g"); // Algo visualizer layer
+            const gActivePath = document.createElementNS("http://www.w3.org/2000/svg", "g"); // Highlighted route
+            const gNodes = document.createElementNS("http://www.w3.org/2000/svg", "g"); // Buildings & Waypoints
+
+            gEdges.id = "layer-edges";
+            gVisitedEdges.id = "layer-visited-edges";
+            gActivePath.id = "layer-active-path";
+            gNodes.id = "layer-nodes";
+
+            // 1. Draw Campus Background Aesthetics (Green Lawns & Pond)
+            gBackground.innerHTML = `
+                <!-- Background Lawn Grid -->
+                <rect width="1000" height="700" fill="#F0FDF4" rx="16" />
+                
+                <!-- Campus Quad Lawn Features -->
+                <path d="M 320 300 Q 380 240 460 280 T 560 360 T 420 420 Z" fill="#DCFCE7" stroke="#BBF7D0" stroke-width="2" />
+                <path d="M 600 500 C 660 480, 780 500, 760 620 C 680 640, 580 580, 600 500 Z" fill="#E0F2FE" stroke="#BAE6FD" stroke-width="2" /> <!-- Campus Lake -->
+                
+                <!-- Decorative Trees -->
+                <circle cx="360" cy="260" r="14" fill="#86EFAC" opacity="0.7" />
+                <circle cx="520" cy="300" r="18" fill="#4ADE80" opacity="0.6" />
+                <circle cx="680" cy="460" r="12" fill="#86EFAC" opacity="0.8" />
+                <circle cx="200" cy="500" r="16" fill="#4ADE80" opacity="0.5" />
+                
+                <text x="690" y="560" font-size="11" font-weight="bold" fill="#0284C7" opacity="0.6" font-family="Inter">Mirror Lake</text>
+                <text x="400" y="340" font-size="12" font-weight="bold" fill="#16A34A" opacity="0.4" font-family="Inter">Central Green Quad</text>
+            `;
+
+            // 2. Draw Pathways / Graph Edges
+            campusGraph.edges.forEach(edge => {
+                const source = campusGraph.nodes.find(n => n.id === edge.from);
+                const target = campusGraph.nodes.find(n => n.id === edge.to);
+
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", source.x);
+                line.setAttribute("y1", source.y);
+                line.setAttribute("x2", target.x);
+                line.setAttribute("y2", target.y);
+                line.setAttribute("id", `edge-${edge.from}-${edge.to}`);
+                
+                if (edge.stairs) {
+                    line.setAttribute("stroke", "#F59E0B"); // Amber for stairs
+                    line.setAttribute("stroke-width", "4");
+                    line.setAttribute("stroke-dasharray", "4,4");
+                } else {
+                    line.setAttribute("stroke", "#CBD5E1"); // Standard road line
+                    line.setAttribute("stroke-width", "6");
+                    line.setAttribute("stroke-linecap", "round");
+                }
+
+                gEdges.appendChild(line);
+            });
+
+            // 3. Draw Nodes (Buildings & Intersections)
+            campusGraph.nodes.forEach(node => {
+                const gNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                gNode.setAttribute("id", `node-${node.id}`);
+                gNode.setAttribute("class", "cursor-pointer transition-transform duration-200 hover:scale-110");
+                gNode.onclick = () => handleNodeClick(node.id);
+
+                if (node.category === 'waypoint') {
+                    // Waypoint Circle Marker
+                    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    circle.setAttribute("cx", node.x);
+                    circle.setAttribute("cy", node.y);
+                    circle.setAttribute("r", "5");
+                    circle.setAttribute("fill", node.stairs ? "#F59E0B" : "#94A3B8");
+                    circle.setAttribute("id", `node-circle-${node.id}`);
+                    gNode.appendChild(circle);
+                } else {
+                    // Building Card Node
+                    let nodeBgColor = "#3B82F6";
+                    if (node.category === 'gate') nodeBgColor = "#10B981";
+                    if (node.category === 'academic') nodeBgColor = "#0EA5E9";
+                    if (node.category === 'center') nodeBgColor = "#FF5200";
+                    if (node.category === 'hostel') nodeBgColor = "#8B5CF6";
+                    if (node.category === 'sports') nodeBgColor = "#EC4899";
+
+                    // Outer halo ring
+                    const halo = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    halo.setAttribute("cx", node.x);
+                    halo.setAttribute("cy", node.y);
+                    halo.setAttribute("r", "18");
+                    halo.setAttribute("fill", nodeBgColor);
+                    halo.setAttribute("opacity", "0.2");
+                    halo.setAttribute("id", `node-halo-${node.id}`);
+
+                    // Main node circle
+                    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    circle.setAttribute("cx", node.x);
+                    circle.setAttribute("cy", node.y);
+                    circle.setAttribute("r", "13");
+                    circle.setAttribute("fill", nodeBgColor);
+                    circle.setAttribute("stroke", "#FFFFFF");
+                    circle.setAttribute("stroke-width", "2.5");
+                    circle.setAttribute("class", "shadow-md");
+                    circle.setAttribute("id", `node-circle-${node.id}`);
+
+                    // Label text
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", node.x);
+                    text.setAttribute("y", node.y + 28);
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("font-size", "11");
+                    text.setAttribute("font-weight", "700");
+                    text.setAttribute("fill", "#1E293B");
+                    text.setAttribute("font-family", "Inter");
+                    text.textContent = node.name;
+
+                    gNode.appendChild(halo);
+                    gNode.appendChild(circle);
+                    gNode.appendChild(text);
+                }
+
+                gNodes.appendChild(gNode);
+            });
+
+            svgMap.appendChild(gBackground);
+            svgMap.appendChild(gEdges);
+            svgMap.appendChild(gVisitedEdges);
+            svgMap.appendChild(gActivePath);
+            svgMap.appendChild(gNodes);
+        }
+
+        // Dijkstra's Shortest Path Algorithm
+        function runDijkstra(startId, targetId, avoidStairs = false) {
+            const startTime = performance.now();
+            const distances = {};
+            const previous = {};
+            const visited = new Set();
+            const visitedOrder = []; // For visualizer animation tracking
+
+            campusGraph.nodes.forEach(node => {
+                distances[node.id] = Infinity;
+                previous[node.id] = null;
+            });
+
+            distances[startId] = 0;
+
+            const unvisited = new Set(campusGraph.nodes.map(n => n.id));
+
+            while (unvisited.size > 0) {
+                // Get node with smallest distance
+                let currentId = null;
+                let minDist = Infinity;
+
+                unvisited.forEach(nodeId => {
+                    if (distances[nodeId] < minDist) {
+                        minDist = distances[nodeId];
+                        currentId = nodeId;
+                    }
+                });
+
+                if (currentId === null || distances[currentId] === Infinity) break;
+                if (currentId === targetId) {
+                    visitedOrder.push(currentId);
+                    break;
+                }
+
+                unvisited.delete(currentId);
+                visited.add(currentId);
+                visitedOrder.push(currentId);
+
+                // Check neighbors
+                const neighboringEdges = campusGraph.edges.filter(
+                    e => e.from === currentId || e.to === currentId
+                );
+
+                neighboringEdges.forEach(edge => {
+                    // Skip stairs if accessibility wheelchair mode is enabled
+                    if (avoidStairs && edge.stairs) return;
+
+                    const neighborId = edge.from === currentId ? edge.to : edge.from;
+                    if (visited.has(neighborId)) return;
+
+                    const alt = distances[currentId] + edge.weight;
+                    if (alt < distances[neighborId]) {
+                        distances[neighborId] = alt;
+                        previous[neighborId] = currentId;
+                    }
+                });
+            }
+
+            // Reconstruct path
+            const path = [];
+            let u = targetId;
+            if (previous[u] || u === startId) {
+                while (u) {
+                    path.unshift(u);
+                    u = previous[u];
+                }
+            }
+
+            const endTime = performance.now();
+
+            return {
+                path,
+                distance: distances[targetId],
+                visitedOrder,
+                nodesVisitedCount: visited.size,
+                executionTimeMs: (endTime - startTime).toFixed(2)
+            };
+        }
+
+        // BFS Algorithm (Fewest Hops / Turns)
+        function runBFS(startId, targetId, avoidStairs = false) {
+            const startTime = performance.now();
+            const queue = [[startId]];
+            const visited = new Set([startId]);
+            const visitedOrder = [startId];
+
+            while (queue.length > 0) {
+                const path = queue.shift();
+                const node = path[path.length - 1];
+
+                if (node === targetId) {
+                    const endTime = performance.now();
+                    // Calculate total distance for BFS path
+                    let totalDist = 0;
+                    for (let i = 0; i < path.length - 1; i++) {
+                        const edge = campusGraph.edges.find(e => 
+                            (e.from === path[i] && e.to === path[i+1]) || 
+                            (e.from === path[i+1] && e.to === path[i])
+                        );
+                        if (edge) totalDist += edge.weight;
+                    }
+
+                    return {
+                        path,
+                        distance: totalDist,
+                        visitedOrder,
+                        nodesVisitedCount: visited.size,
+                        executionTimeMs: (endTime - startTime).toFixed(2)
+                    };
+                }
+
+                const neighbors = campusGraph.edges
+                    .filter(e => (e.from === node || e.to === node) && (!avoidStairs || !e.stairs))
+                    .map(e => e.from === node ? e.to : e.from);
+
+                for (const neighbor of neighbors) {
+                    if (!visited.has(neighbor)) {
+                        visited.add(neighbor);
+                        visitedOrder.push(neighbor);
+                        queue.push([...path, neighbor]);
+                    }
+                }
+            }
+
+            const endTime = performance.now();
+            return { path: [], distance: Infinity, visitedOrder, nodesVisitedCount: visited.size, executionTimeMs: (endTime - startTime).toFixed(2) };
+        }
+
+        // Handle Calculate Route Logic
+        async function calculateAndRenderRoute() {
+            if (isExploring) return; // Prevent spamming while animating
+
+            const fromId = selectFrom.value;
+            const toId = selectTo.value;
+            const avoidStairs = toggleWheelchair.checked;
+            const algo = selectAlgorithm.value;
+
+            if (fromId === toId) {
+                alert("Start and Destination building cannot be identical!");
+                return;
+            }
+
+            // Execute selected graph search algorithm
+            let result;
+            if (algo === 'bfs') {
+                result = runBFS(fromId, toId, avoidStairs);
+            } else {
+                result = runDijkstra(fromId, toId, avoidStairs);
+            }
+
+            if (!result.path || result.path.length === 0 || result.distance === Infinity) {
+                alert("No accessible route found with the current filter preferences!");
+                return;
+            }
+
+            // Reset visual layers
+            clearActivePaths();
+
+            if (isAlgoVisualizerMode) {
+                // Animate algorithm exploration node-by-node
+                isExploring = true;
+                algoMetricsBanner.classList.remove('hidden');
+                document.getElementById('algoStatusBadge').textContent = "Exploring Graph...";
+                document.getElementById('algoStatusBadge').className = "text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono animate-pulse";
+                
+                await animateAlgorithmExploration(result.visitedOrder);
+                
+                document.getElementById('algoStatusBadge').textContent = "Completed";
+                document.getElementById('algoStatusBadge').className = "text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono";
+                isExploring = false;
+            } else {
+                algoMetricsBanner.classList.add('hidden');
+            }
+
+            // Draw final highlighted path & step directions
+            highlightPathOnMap(result.path);
+            updateSummaryAndDirections(result, fromId, toId);
+        }
+
+        // Animated step-by-step exploration of graph nodes
+        function animateAlgorithmExploration(visitedOrder) {
+            return new Promise((resolve) => {
+                const layerVisited = document.getElementById('layer-visited-edges');
+                let step = 0;
+
+                document.getElementById('metricAlgoName').textContent = selectAlgorithm.value.toUpperCase();
+                document.getElementById('metricExecTime').textContent = "calculating...";
+
+                const interval = setInterval(() => {
+                    if (step >= visitedOrder.length) {
+                        clearInterval(interval);
+                        document.getElementById('metricNodesVisited').textContent = visitedOrder.length;
+                        resolve();
+                        return;
+                    }
+
+                    const nodeId = visitedOrder[step];
+                    const nodeCircle = document.getElementById(`node-circle-${nodeId}`);
+                    
+                    if (nodeCircle) {
+                        // Pulse animation ring
+                        const pulse = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        const nodeData = campusGraph.nodes.find(n => n.id === nodeId);
+                        pulse.setAttribute("cx", nodeData.x);
+                        pulse.setAttribute("cy", nodeData.y);
+                        pulse.setAttribute("r", "15");
+                        pulse.setAttribute("fill", "none");
+                        pulse.setAttribute("stroke", "#38BDF8");
+                        pulse.setAttribute("stroke-width", "3");
+                        pulse.setAttribute("class", "node-pulse");
+                        layerVisited.appendChild(pulse);
+                    }
+
+                    document.getElementById('metricNodesVisited').textContent = step + 1;
+                    step++;
+                }, 120);
+            });
+        }
+
+        // Clear paths & reset highlighted node styles
+        function clearActivePaths() {
+            document.getElementById('layer-active-path').innerHTML = '';
+            document.getElementById('layer-visited-edges').innerHTML = '';
+            
+            // Reset node styles
+            campusGraph.nodes.forEach(n => {
+                const circle = document.getElementById(`node-circle-${n.id}`);
+                const halo = document.getElementById(`node-halo-${n.id}`);
+                if (circle) circle.setAttribute("stroke-width", "2.5");
+                if (halo) halo.setAttribute("opacity", "0.2");
+            });
+        }
+
+        // Draw active glowing route path line
+        function highlightPathOnMap(path) {
+            const gActive = document.getElementById('layer-active-path');
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const u = campusGraph.nodes.find(n => n.id === path[i]);
+                const v = campusGraph.nodes.find(n => n.id === path[i+1]);
+
+                // Neon glowing back layer
+                const glowLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                glowLine.setAttribute("x1", u.x);
+                glowLine.setAttribute("y1", u.y);
+                glowLine.setAttribute("x2", v.x);
+                glowLine.setAttribute("y2", v.y);
+                glowLine.setAttribute("stroke", "#FF5200");
+                glowLine.setAttribute("stroke-width", "10");
+                glowLine.setAttribute("stroke-opacity", "0.3");
+                glowLine.setAttribute("stroke-linecap", "round");
+
+                // Animated dashed top line
+                const activeLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                activeLine.setAttribute("x1", u.x);
+                activeLine.setAttribute("y1", u.y);
+                activeLine.setAttribute("x2", v.x);
+                activeLine.setAttribute("y2", v.y);
+                activeLine.setAttribute("stroke", "#FF5200");
+                activeLine.setAttribute("stroke-width", "5");
+                activeLine.setAttribute("class", "path-animated");
+                activeLine.setAttribute("stroke-linecap", "round");
+
+                gActive.appendChild(glowLine);
+                gActive.appendChild(activeLine);
+            }
+
+            // Highlight start & end node icons
+            const startCircle = document.getElementById(`node-circle-${path[0]}`);
+            const endCircle = document.getElementById(`node-circle-${path[path.length - 1]}`);
+            
+            if (startCircle) startCircle.setAttribute("stroke-width", "5");
+            if (endCircle) endCircle.setAttribute("stroke-width", "5");
+        }
+
+        // Render Step-by-Step Directions & Navigation Stats
+        function updateSummaryAndDirections(result, fromId, toId) {
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('routeSummaryCard').classList.remove('hidden');
+
+            const totalMeters = result.distance;
+            const walkTimeMins = Math.max(1, Math.round(totalMeters / 80)); // Avg 80m/min walking speed
+            const calories = Math.round(totalMeters * 0.065); // Approx 0.065 kcal per meter
+
+            document.getElementById('summaryDistance').textContent = `${totalMeters} m`;
+            document.getElementById('summaryTime').innerHTML = `<i class="fa-solid fa-person-walking text-brand-orange text-lg"></i> ${walkTimeMins} min walk`;
+            document.getElementById('summaryCalories').textContent = `~${calories} kcal`;
+            document.getElementById('summaryNodesCount').textContent = result.path.length;
+            document.getElementById('summaryAccess').textContent = toggleWheelchair.checked ? "Wheelchair Safe" : "Standard Path";
+            
+            document.getElementById('badgeRouteType').textContent = selectAlgorithm.value === 'dijkstra' ? 'Shortest Distance' : 'Fewest Hops';
+
+            // Generate Step-by-Step Directions List
+            const listContainer = document.getElementById('turnDirectionsList');
+            listContainer.innerHTML = '';
+
+            const pathNodes = result.path.map(id => campusGraph.nodes.find(n => n.id === id));
+            document.getElementById('stepCountBadge').textContent = `${pathNodes.length - 1} Hops`;
+
+            for (let i = 0; i < pathNodes.length; i++) {
+                const curr = pathNodes[i];
+                const item = document.createElement('div');
+                item.className = "flex items-start gap-3 relative z-10 bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm hover:border-slate-200 transition";
+
+                let iconClass = "fa-circle-dot text-brand-orange";
+                let actionText = `Pass by <b>${curr.name}</b>`;
+
+                if (i === 0) {
+                    iconClass = "fa-location-dot text-emerald-500";
+                    actionText = `Start at <b>${curr.name}</b>`;
+                } else if (i === pathNodes.length - 1) {
+                    iconClass = "fa-flag-checkered text-brand-orange";
+                    actionText = `Arrive at destination: <b>${curr.name}</b>`;
+                } else {
+                    // Determine direction heading angle or stairs
+                    const prev = pathNodes[i - 1];
+                    const edge = campusGraph.edges.find(e => 
+                        (e.from === prev.id && e.to === curr.id) || 
+                        (e.from === curr.id && e.to === prev.id)
+                    );
+
+                    if (edge && edge.stairs) {
+                        iconClass = "fa-stairs text-amber-500";
+                        actionText = `Take stairs pathway towards <b>${curr.name}</b> (${edge.weight}m)`;
+                    } else {
+                        iconClass = "fa-arrow-up text-sky-500";
+                        actionText = `Head towards <b>${curr.name}</b> (${edge ? edge.weight : 0}m)`;
+                    }
+                }
+
+                item.innerHTML = `
+                    <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <i class="fa-solid ${iconClass} text-xs"></i>
+                    </div>
+                    <div class="flex-1 text-xs text-slate-700">
+                        <p class="leading-snug">${actionText}</p>
+                    </div>
+                `;
+
+                listContainer.appendChild(item);
+            }
+
+            // Update Metrics Banner timing if visualizer active
+            if (isAlgoVisualizerMode) {
+                document.getElementById('metricExecTime').textContent = `${result.executionTimeMs} ms`;
+            }
+        }
+
+        // Setup User Event Listeners
+        function setupEventListeners() {
+            // Find Route Button
+            btnFindRoute.addEventListener('click', calculateAndRenderRoute);
+
+            // Swap Start / End Button
+            btnSwap.addEventListener('click', () => {
+                const temp = selectFrom.value;
+                selectFrom.value = selectTo.value;
+                selectTo.value = temp;
+                calculateAndRenderRoute();
+            });
+
+            // Toggle Visualizer Mode
+            toggleAlgoVisualizer.addEventListener('click', () => {
+                isAlgoVisualizerMode = !isAlgoVisualizerMode;
+                if (isAlgoVisualizerMode) {
+                    algoModeBadge.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse";
+                    toggleAlgoVisualizer.classList.add('border-brand-orange', 'bg-slate-700');
+                    algoMetricsBanner.classList.remove('hidden');
+                } else {
+                    algoModeBadge.className = "w-2.5 h-2.5 rounded-full bg-slate-500 inline-block";
+                    toggleAlgoVisualizer.classList.remove('border-brand-orange', 'bg-slate-700');
+                    algoMetricsBanner.classList.add('hidden');
+                }
+            });
+
+            // Wheelchair filter trigger re-calc
+            toggleWheelchair.addEventListener('change', () => {
+                if (!document.getElementById('routeSummaryCard').classList.contains('hidden')) {
+                    calculateAndRenderRoute();
+                }
+            });
+
+            // Zoom Map Controls
+            document.getElementById('btnZoomIn').addEventListener('click', () => {
+                zoomLevel = Math.max(0.6, zoomLevel - 0.15);
+                updateSvgViewBox();
+            });
+
+            document.getElementById('btnZoomOut').addEventListener('click', () => {
+                zoomLevel = Math.min(1.8, zoomLevel + 0.15);
+                updateSvgViewBox();
+            });
+
+            document.getElementById('btnResetView').addEventListener('click', () => {
+                zoomLevel = 1;
+                viewBox = { x: 0, y: 0, w: 1000, h: 700 };
+                updateSvgViewBox();
+            });
+        }
+
+        // SVG Pan & Zoom Helper
+        function updateSvgViewBox() {
+            const w = 1000 * zoomLevel;
+            const h = 700 * zoomLevel;
+            const x = (1000 - w) / 2;
+            const y = (700 - h) / 2;
+            svgMap.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
+        }
+
+        // Clicking a node on map selects destination
+        function handleNodeClick(nodeId) {
+            const node = campusGraph.nodes.find(n => n.id === nodeId);
+            if (node && node.category !== 'waypoint') {
+                if (selectFrom.value === nodeId) return;
+                selectTo.value = nodeId;
+                calculateAndRenderRoute();
+            }
+        }
+
+        // Run application on load
+        window.onload = initApp;
+    </script>
+</body>
+</html>
